@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AMA Employee Shopping Access</title>
+
+<!-- Tailwind (utility classes) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- React 18 + ReactDOM 18 as classic (non-module) scripts, so this works
+     when opened directly as a file (file://) with no build step or server -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+<!-- Babel standalone transpiles the JSX below directly in the browser -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<style>
+  body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  .loading-spin { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-slate-50">
+<div id="root">
+  <div id="loading-msg" style="padding:2rem;text-align:center;color:#64748b;">Loading AMA Employee Shopping Access…</div>
+</div>
+
+<script>
+  window.addEventListener('error', function (e) {
+    var root = document.getElementById('root');
+    if (root) {
+      root.innerHTML =
+        '<div style="max-width:600px;margin:2rem auto;padding:1.5rem;border:1px solid #fecaca;background:#fef2f2;border-radius:12px;color:#991b1b;font-family:monospace;font-size:13px;white-space:pre-wrap;">' +
+        'Failed to load the app.\n\nError: ' + (e.message || 'unknown') +
+        (e.filename ? '\nFile: ' + e.filename + ':' + e.lineno : '') +
+        '</div>';
+    }
+  });
+  // If nothing has rendered after 8 seconds, something (likely a blocked
+  // network request to unpkg.com for React/Babel) silently failed.
+  setTimeout(function () {
+    var loading = document.getElementById('loading-msg');
+    if (loading) {
+      loading.innerHTML =
+        'Still loading… this page needs to reach <b>unpkg.com</b> to download React and Babel. ' +
+        'If this message does not go away, that connection is likely being blocked on this network/browser.';
+    }
+  }, 8000);
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+// ---------------------------------------------------------------------
+// Simple built-in icons (no external icon library / network call needed)
+// ---------------------------------------------------------------------
+const I = {
+  search: "🔍", globe: "🌐", user: "👤", menu: "☰", close: "✕",
+  fingerprint: "🔒", shield: "🛡️", check: "✔", alert: "⚠️",
+  copy: "📋", userPlus: "➕", userMinus: "➖", info: "ℹ️", chevronRight: "›", chevronDown: "▾"
+};
+const Icon = ({ name, className = "" }) => <span className={className}>{I[name] || ""}</span>;
+
+// ---------------------------------------------------------------------
+// Demo verification database (frontend-only demo, no backend)
+// ---------------------------------------------------------------------
+const employeeDatabase = [
+  { name: "John Smith", staffId: "AMA-SID-1024", email: "john.smith@ama.com", otp: "183742", relativeISD: "AMA-REL-318205", generatedRID: "AMA-RID-7F29KQ" },
+  { name: "Sarah Johnson", staffId: "AMA-SID-2048", email: "sarah.johnson@ama.com", otp: "560918", relativeISD: "AMA-REL-504771", generatedRID: "AMA-RID-L91XPT" },
+  { name: "Michael Brown", staffId: "AMA-SID-3096", email: "michael.brown@ama.com", otp: "742095", relativeISD: "AMA-REL-921440", generatedRID: "AMA-RID-H4M82Z" },
+  { name: "Emily Davis", staffId: "AMA-SID-4512", email: "emily.davis@ama.com", otp: "825631", relativeISD: "AMA-REL-116824", generatedRID: "AMA-RID-QT73NW" },
+  { name: "Daniel Wilson", staffId: "AMA-SID-5801", email: "daniel.wilson@ama.com", otp: "914520", relativeISD: "AMA-REL-740551", generatedRID: "AMA-RID-AX84LP" },
+];
+const RELATIONSHIPS = ["Father", "Mother", "Sister", "Brother", "Spouse", "Son", "Daughter", "Guardian", "Other"];
+
+// ---------------------------------------------------------------------
+// Shared pieces
+// ---------------------------------------------------------------------
+function Toast({ toast }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setShown(true), 10); return () => clearTimeout(t); }, [toast.id]);
+  return (
+    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium text-white shadow-2xl transition-all duration-300 ${toast.type === "error" ? "bg-red-600" : "bg-green-600"} ${shown ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+      <Icon name={toast.type === "error" ? "alert" : "check"} /> {toast.msg}
+    </div>
+  );
+}
+function StepDots({ step, total }) {
+  return (
+    <div className="flex justify-center gap-2 mb-6">
+      {Array.from({ length: total }, (_, i) => i + 1).map((s) => (
+        <div key={s} className={`h-2 rounded-full transition-all duration-300 ${s === step ? "w-7 bg-blue-600" : s < step ? "w-2 bg-blue-600" : "w-2 bg-slate-200"}`} />
+      ))}
+    </div>
+  );
+}
+function Field({ label, children, error }) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1.5 block font-medium text-slate-600">{label}</span>
+      {children}
+      {error && <span className="mt-1 block text-xs font-medium text-red-600">{error}</span>}
+    </label>
+  );
+}
+const baseInput = "w-full rounded-full border bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-4";
+function inputCls(error) {
+  return `${baseInput} ${error ? "border-red-400 focus:border-red-500 focus:ring-red-100" : "border-slate-300 focus:border-blue-600 focus:ring-blue-100"}`;
+}
+function PrimaryButton({ children, disabled, loading, className = "", ...props }) {
+  return (
+    <button disabled={disabled || loading} className={`inline-flex items-center gap-2 rounded-full bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 ${className}`} {...props}>
+      {loading && <span className="loading-spin">⏳</span>}
+      {children}
+    </button>
+  );
+}
+function OutlineButton({ children, className = "", ...props }) {
+  return (
+    <button className={`inline-flex items-center gap-2 rounded-full border border-blue-600 px-6 py-2.5 text-sm font-semibold text-blue-600 transition hover:bg-blue-50 ${className}`} {...props}>
+      {children}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Navbar
+// ---------------------------------------------------------------------
+function LanguageDropdown() {
+  const [open, setOpen] = useState(false);
+  const [lang, setLang] = useState("EN — English");
+  const langs = ["EN — English", "ES — Español", "FR — Français", "DE — Deutsch"];
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(!open)} className={`flex items-center gap-1.5 rounded-full border-2 px-3.5 py-1.5 text-xs font-bold tracking-wide transition ${open ? "border-white bg-white text-blue-700 shadow-md" : "border-white/70 bg-blue-800 text-white hover:bg-blue-700"}`}>
+        <Icon name="globe" /> {lang.split(" — ")[0]} <Icon name="chevronDown" />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-50 mt-2 w-44 overflow-hidden rounded-2xl border-2 border-blue-100 bg-white shadow-2xl">
+          {langs.map((l) => (
+            <button key={l} onClick={() => { setLang(l); setOpen(false); }} className={`block w-full px-4 py-2.5 text-left text-sm font-medium transition ${l === lang ? "bg-blue-600 text-white" : "text-slate-700 hover:bg-blue-50 hover:text-blue-700"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function Navbar({ onNav }) {
+  const [open, setOpen] = useState(false);
+  const items = ["Home", "Link Relative", "Remove Relative", "How It Works", "Support"];
+  const ids = ["top", "link", "remove", "how", "support"];
+  const go = (id) => { setOpen(false); onNav(id); };
+  return (
+    <nav className="sticky top-0 z-40 bg-blue-900 shadow-md">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-8">
+        <div className="flex items-center gap-6">
+          <div className="flex h-9 w-16 items-center justify-center rounded-lg bg-white text-sm font-bold tracking-wide text-blue-900">AMA</div>
+          <div className="hidden gap-6 text-sm font-medium text-blue-100 md:flex">
+            {items.map((it, i) => <button key={it} onClick={() => go(ids[i])} className="transition hover:text-white">{it}</button>)}
+          </div>
+        </div>
+        <div className="flex items-center gap-4 text-blue-100">
+          <Icon name="search" className="hidden sm:inline" />
+          <LanguageDropdown />
+          <Icon name="user" className="hidden sm:inline" />
+          <button onClick={() => setOpen(!open)} className="md:hidden text-white text-2xl leading-none">
+            <Icon name={open ? "close" : "menu"} />
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="border-t border-blue-800 bg-blue-950 px-4 py-2 md:hidden">
+          {items.map((it, i) => (
+            <button key={it} onClick={() => go(ids[i])} className="block w-full border-b border-blue-800 py-3 text-left text-base font-medium text-blue-50 last:border-b-0">{it}</button>
+          ))}
+        </div>
+      )}
+    </nav>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Security banner
+// ---------------------------------------------------------------------
+function SecurityBanner() {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div className="flex items-start justify-between gap-3 border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-sm text-slate-700 md:px-8">
+      <div className="flex items-start gap-3">
+        <Icon name="shield" />
+        <p><span className="font-semibold text-slate-900">Security notice: </span>AMA will never ask for payment, passwords, or sensitive account details through unofficial channels. Always use verified company email and the official portal for account changes.</p>
+      </div>
+      <button onClick={() => setDismissed(true)} className="shrink-0 text-slate-400 hover:text-slate-600"><Icon name="close" /></button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Hero
+// ---------------------------------------------------------------------
+function Hero({ onNav }) {
+  return (
+    <section id="top" className="mx-auto max-w-6xl px-4 py-10 md:px-8">
+      <div className="grid gap-6 md:grid-cols-5">
+        <div className="rounded-3xl border border-slate-100 bg-white p-8 shadow-sm md:col-span-3">
+          <h1 className="text-3xl font-bold text-slate-900 md:text-4xl">AMA Employee Shopping Access</h1>
+          <p className="mt-3 max-w-lg text-slate-500">Manage relative access to eligible employee shopping benefits through a secure verification process.</p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <PrimaryButton onClick={() => onNav("link")}><Icon name="userPlus" /> Link relative</PrimaryButton>
+            <OutlineButton onClick={() => onNav("remove")}><Icon name="userMinus" /> Remove relative</OutlineButton>
+            <OutlineButton onClick={() => onNav("how")}><Icon name="info" /> How it works</OutlineButton>
+          </div>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-600">
+              <Icon name="fingerprint" /> Fingerprint, face, or device passcode
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm md:col-span-2">
+          <p className="text-sm font-medium text-slate-500">Demo authentication</p>
+          <Field label="Employee ID"><input className={inputCls(false)} placeholder="e.g. AMA-SID-1024" /></Field>
+          <Field label="Password / verification code"><input className={inputCls(false)} type="password" placeholder="Enter code" /></Field>
+          <PrimaryButton className="w-full justify-center">Sign in</PrimaryButton>
+          <a href="#" className="text-center text-xs font-medium text-blue-600">Forgot access? View FAQ</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Action cards
+// ---------------------------------------------------------------------
+function ActionCards({ onNav }) {
+  const cards = [
+    { icon: "userPlus", title: "Link relative data", desc: "Add a family member to your benefit plan.", id: "link" },
+    { icon: "userMinus", title: "Remove relative data", desc: "Revoke access for an existing relative.", id: "remove" },
+    { icon: "info", title: "How does this work", desc: "Learn the step-by-step process.", id: "how" },
+  ];
+  return (
+    <section className="mx-auto max-w-6xl px-4 py-6 md:px-8">
+      <h2 className="mb-4 text-lg font-semibold text-slate-900">What do you want to do?</h2>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {cards.map((c) => (
+          <button key={c.id} onClick={() => onNav(c.id)} className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-100 bg-white p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md">
+            <span className="text-2xl text-blue-600"><Icon name={c.icon} /></span>
+            <h3 className="font-semibold text-slate-900">{c.title}</h3>
+            <p className="text-sm text-slate-500">{c.desc}</p>
+            <span className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-blue-600">Get started <Icon name="chevronRight" /></span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Link relative wizard
+// ---------------------------------------------------------------------
+function LinkRelative({ notify }) {
+  const [step, setStep] = useState(1);
+  const [staffId, setStaffId] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [staffVerifying, setStaffVerifying] = useState(false);
+  const [staffVerified, setStaffVerified] = useState(false);
+  const [staffError, setStaffError] = useState("");
+  const [matchedEmployee, setMatchedEmployee] = useState(null);
+
+  const [name, setName] = useState("");
+  const [age, setAge] = useState("");
+  const [gender, setGender] = useState("");
+  const [relationship, setRelationship] = useState("");
+  const [email, setEmail] = useState("");
+  const [officePosition, setOfficePosition] = useState("");
+  const [isd, setIsd] = useState("");
+  const [isdVerifying, setIsdVerifying] = useState(false);
+  const [isdVerified, setIsdVerified] = useState(false);
+  const [isdError, setIsdError] = useState("");
+
+  const [terms, setTerms] = useState({ t1: false, t2: false, t3: false });
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const sendOtp = () => {
+    if (!staffId) return;
+    setOtpSending(true); setStaffError("");
+    setTimeout(() => { setOtpSending(false); setOtpSent(true); notify("Verification code sent successfully", "success"); }, 1500);
+  };
+  const verifyStaff = () => {
+    setStaffVerifying(true);
+    setTimeout(() => {
+      const record = employeeDatabase.find((e) => e.staffId === staffId && e.otp === otp);
+      setStaffVerifying(false);
+      if (record) { setStaffVerified(true); setMatchedEmployee(record); setStaffError(""); notify("Staff Verified", "success"); }
+      else { setStaffVerified(false); setStaffError("Invalid Staff ID or Verification Code."); notify("Invalid Staff ID", "error"); }
+    }, 700);
+  };
+  const verifyIsd = () => {
+    setIsdVerifying(true);
+    setTimeout(() => {
+      setIsdVerifying(false);
+      const ok = matchedEmployee && isd === matchedEmployee.relativeISD;
+      setIsdVerified(!!ok); setIsdError(ok ? "" : "Invalid Relative ISD.");
+      notify(ok ? "Relative Verified" : "Invalid Relative ISD", ok ? "success" : "error");
+    }, 600);
+  };
+  const canGenerate = staffVerified && isdVerified && name && age && gender && relationship && email && terms.t1 && terms.t2 && terms.t3;
+  const generate = () => {
+    if (!canGenerate) return;
+    setGenerating(true);
+    setTimeout(() => { setGenerating(false); setResult({ name, relationship, rid: matchedEmployee.generatedRID }); notify("RID Generated", "success"); }, 1200);
+  };
+  const resetAll = () => {
+    setStep(1); setStaffId(""); setOtp(""); setOtpSent(false); setStaffVerified(false); setStaffError(""); setMatchedEmployee(null);
+    setName(""); setAge(""); setGender(""); setRelationship(""); setEmail(""); setOfficePosition("");
+    setIsd(""); setIsdVerified(false); setIsdError(""); setTerms({ t1: false, t2: false, t3: false }); setResult(null);
+  };
+
+  return (
+    <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm md:p-8">
+      <StepDots step={step} total={4} />
+
+      {step === 1 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-slate-900">Staff verification</h3>
+          <Field label="Staff ID"><input className={inputCls(staffError)} value={staffId} onChange={(e) => { setStaffId(e.target.value); setStaffError(""); }} placeholder="e.g. AMA-SID-1024" /></Field>
+          <PrimaryButton onClick={sendOtp} loading={otpSending} disabled={!staffId || otpSent}>{otpSent ? "Code sent" : "Send OTP"}</PrimaryButton>
+          {otpSent && (
+            <>
+              <Field label="Verification OTP" error={staffError}><input className={inputCls(staffError)} value={otp} onChange={(e) => { setOtp(e.target.value); setStaffError(""); }} placeholder="6-digit code" /></Field>
+              <div className="flex items-center gap-3">
+                <PrimaryButton onClick={verifyStaff} loading={staffVerifying} disabled={!otp}>Verify</PrimaryButton>
+                {staffVerified && <span className="inline-flex items-center gap-1 text-sm font-medium text-green-600"><Icon name="check" /> Staff verified successfully</span>}
+              </div>
+            </>
+          )}
+          {staffVerified && <PrimaryButton onClick={() => setStep(2)}>Next</PrimaryButton>}
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-slate-900">Relative details</h3>
+          <Field label="Full name"><input className={inputCls(false)} value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" /></Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Age"><input className={inputCls(false)} value={age} onChange={(e) => setAge(e.target.value)} placeholder="Age" /></Field>
+            <Field label="Gender">
+              <select className={inputCls(false)} value={gender} onChange={(e) => setGender(e.target.value)}>
+                <option value="">Select</option><option>Male</option><option>Female</option><option>Other</option>
+              </select>
+            </Field>
+          </div>
+          <Field label="Relationship">
+            <select className={inputCls(false)} value={relationship} onChange={(e) => setRelationship(e.target.value)}>
+              <option value="">Select relationship</option>
+              {RELATIONSHIPS.map((r) => <option key={r}>{r}</option>)}
+            </select>
+          </Field>
+          <Field label="Relative email"><input className={inputCls(false)} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></Field>
+          <Field label="Office position (optional)"><input className={inputCls(false)} value={officePosition} onChange={(e) => setOfficePosition(e.target.value)} placeholder="e.g. Analyst" /></Field>
+          <Field label="Relative ISD — the invitation code sent to your relative by email" error={isdError}>
+            <div className="flex gap-2">
+              <input className={inputCls(isdError)} value={isd} onChange={(e) => { setIsd(e.target.value); setIsdError(""); }} placeholder="AMA-REL-XXXXXX" />
+              <PrimaryButton onClick={verifyIsd} loading={isdVerifying} disabled={!isd}>Verify</PrimaryButton>
+            </div>
+          </Field>
+          {isdVerified && <span className="inline-flex items-center gap-1 text-sm font-medium text-green-600"><Icon name="check" /> Relative verified successfully</span>}
+          <div className="flex gap-3">
+            <OutlineButton onClick={() => setStep(1)}>Back</OutlineButton>
+            {isdVerified && name && age && gender && relationship && email && <PrimaryButton onClick={() => setStep(3)}>Next</PrimaryButton>}
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-slate-900">Terms & confirmation</h3>
+          {[["t1", "I confirm this relative is authorized to be linked to my employee benefit account"], ["t2", "I understand the shared benefit rules"], ["t3", "I accept the terms and conditions"]].map(([key, label]) => (
+            <label key={key} className="flex items-start gap-2 text-sm text-slate-700">
+              <input type="checkbox" className="mt-0.5" checked={terms[key]} onChange={(e) => setTerms({ ...terms, [key]: e.target.checked })} /> {label}
+            </label>
+          ))}
+          <div className="flex gap-3">
+            <OutlineButton onClick={() => setStep(2)}>Back</OutlineButton>
+            <PrimaryButton onClick={() => setStep(4)} disabled={!(terms.t1 && terms.t2 && terms.t3)}>Continue</PrimaryButton>
+          </div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-slate-900">Generate relative ID</h3>
+          {!result && <PrimaryButton onClick={generate} loading={generating} disabled={!canGenerate}>Generate RID</PrimaryButton>}
+          {result && (
+            <>
+              <div className="flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4">
+                <Icon name="check" className="text-green-600" />
+                <div><p className="font-semibold text-slate-900">Relative Successfully Connected</p><p className="text-sm text-slate-600">{result.name} · {result.relationship}</p></div>
+              </div>
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+                <p className="text-sm font-semibold text-slate-900">Save Your Relative ID</p>
+                <p className="mt-1 text-sm text-slate-600">Please save this Relative ID (RID). You will need this code whenever you want to manage or remove this relative in the future.</p>
+                <div className="mt-3 flex items-center justify-between rounded-full bg-white px-4 py-2">
+                  <span className="font-mono text-lg font-bold text-slate-900">{result.rid}</span>
+                  <button onClick={() => navigator.clipboard && navigator.clipboard.writeText(result.rid)} className="text-blue-600 hover:text-blue-800"><Icon name="copy" /></button>
+                </div>
+              </div>
+              <OutlineButton onClick={resetAll}>Link another relative</OutlineButton>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Remove relative
+// ---------------------------------------------------------------------
+function RemoveRelative({ notify }) {
+  const [staffId, setStaffId] = useState("");
+  const [otp, setOtp] = useState("");
+  const [rid, setRid] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [error, setError] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [removed, setRemoved] = useState(false);
+  const [reason, setReason] = useState("");
+  const [comment, setComment] = useState("");
+
+  const requestRemoval = () => {
+    setChecking(true); setError("");
+    setTimeout(() => {
+      setChecking(false);
+      const record = employeeDatabase.find((e) => e.staffId === staffId && e.otp === otp && e.generatedRID === rid);
+      if (record) setConfirmOpen(true);
+      else { setError("Invalid verification details."); notify("Verification Failed", "error"); }
+    }, 900);
+  };
+  const confirmRemove = () => { setConfirmOpen(false); setRemoved(true); notify("Relative Removed", "success"); };
+  const submitFeedback = () => { notify("Thank you for your feedback", "success"); setReason(""); setComment(""); };
+
+  return (
+    <div className="space-y-4 rounded-3xl border border-slate-100 bg-white p-6 shadow-sm md:p-8">
+      <h3 className="font-semibold text-slate-900">Remove a relative</h3>
+      <Field label="Staff ID"><input className={inputCls(error)} value={staffId} onChange={(e) => { setStaffId(e.target.value); setError(""); }} placeholder="e.g. AMA-SID-1024" /></Field>
+      <Field label="Verification OTP"><input className={inputCls(error)} value={otp} onChange={(e) => { setOtp(e.target.value); setError(""); }} placeholder="6-digit code" /></Field>
+      <Field label="Relative ID (RID)" error={error}><input className={inputCls(error)} value={rid} onChange={(e) => { setRid(e.target.value); setError(""); }} placeholder="AMA-RID-XXXXXX" /></Field>
+      {!removed && <PrimaryButton onClick={requestRemoval} loading={checking} disabled={!staffId || !otp || !rid}>Remove relative</PrimaryButton>}
+      {removed && (
+        <div className="space-y-4 rounded-2xl border border-green-200 bg-green-50 p-5">
+          <p className="font-semibold text-green-700">Relative successfully disconnected.</p>
+          <div className="space-y-3 border-t border-green-200 pt-4">
+            <p className="text-sm font-medium text-slate-700">Why are you removing this relative?</p>
+            <div className="space-y-2">
+              {[["mismatch", "Mismatch agreement"], ["conflict", "Relative conflict"], ["nosay", "Rather not say"]].map(([val, label]) => (
+                <label key={val} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="radio" name="reason" checked={reason === val} onChange={() => setReason(val)} /> {label}
+                </label>
+              ))}
+            </div>
+            <textarea className={`${inputCls(false)} rounded-2xl`} rows={2} placeholder="Optional comments" value={comment} onChange={(e) => setComment(e.target.value)} />
+            <PrimaryButton onClick={submitFeedback} disabled={!reason}>Submit</PrimaryButton>
+          </div>
+        </div>
+      )}
+      {confirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <h4 className="font-semibold text-slate-900">Confirm removal</h4>
+            <p className="mt-2 text-sm text-slate-600">Removing this relative will revoke their access to the shared employee benefit.</p>
+            <div className="mt-5 flex justify-end gap-3">
+              <OutlineButton onClick={() => setConfirmOpen(false)}>Cancel</OutlineButton>
+              <button onClick={confirmRemove} className="rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-red-700">Confirm removal</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// How it works + footer
+// ---------------------------------------------------------------------
+function HowItWorks() {
+  const steps = ["Employee receives the official access link", "Staff verifies identity with OTP", "Employee enters relative details", "Relative ISD / invitation code is confirmed", "RID is generated", "Employee saves the RID for future management", "Relative can later be removed using staff verification plus RID"];
+  return (
+    <section id="how" className="mx-auto max-w-6xl px-4 py-10 md:px-8">
+      <h2 className="mb-6 text-xl font-semibold text-slate-900">How it works</h2>
+      <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {steps.map((s, i) => (
+          <li key={i} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{i + 1}</span>
+            <span className="text-sm text-slate-700">{s}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+function Footer() {
+  const cols = [["About AMA", ["Employee shopping access portal"]], ["Support", ["Help Center", "Contact Us"]], ["Security", ["Privacy", "Terms"]], ["Quick links", ["Employee Access", "FAQ"]]];
+  return (
+    <footer id="support" className="mt-12 bg-slate-950 px-4 pt-10 pb-6 text-white md:px-8">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 text-sm md:grid-cols-4">
+        {cols.map(([title, links]) => (
+          <div key={title}>
+            <h4 className="mb-2 font-semibold">{title}</h4>
+            {links.map((l) => <a key={l} href="#" className="block text-xs text-slate-400 hover:text-white">{l}</a>)}
+          </div>
+        ))}
+      </div>
+      <div className="mx-auto mt-6 max-w-6xl border-t border-slate-800 pt-4 text-center text-xs text-slate-500">© 2026 AMA Employee Access. All rights reserved.</div>
+    </footer>
+  );
+}
+
+// ---------------------------------------------------------------------
+// App
+// ---------------------------------------------------------------------
+function App() {
+  const [toast, setToast] = useState(null);
+  const notify = (msg, type = "success") => setToast({ id: Date.now(), msg, type });
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); }, [toast]);
+  const onNav = (id) => { const el = document.getElementById(id); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); };
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Navbar onNav={onNav} />
+      <SecurityBanner />
+      <Hero onNav={onNav} />
+      <ActionCards onNav={onNav} />
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-4 md:grid-cols-2 md:px-8">
+        <div id="link"><h2 className="mb-4 text-xl font-bold text-slate-900">Link relative</h2><LinkRelative notify={notify} /></div>
+        <div id="remove"><h2 className="mb-4 text-xl font-bold text-slate-900">Remove relative</h2><RemoveRelative notify={notify} /></div>
+      </div>
+      <HowItWorks />
+      <Footer />
+      {toast && <Toast toast={toast} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
